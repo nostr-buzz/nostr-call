@@ -128,12 +128,21 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
         (offer: SignalingMessage, senderPubkey: string) => {
           const callOffer = offer as CallOfferMessage;
           
-          setIncomingCall({
-            remotePubkey: senderPubkey,
-            offer: callOffer,
-            callType: callOffer.callType,
+          // Ignore incoming calls if already in a call
+          setCallState((currentState) => {
+            if (currentState !== 'idle') {
+              console.log('Ignoring incoming call - already in call state:', currentState);
+              return currentState;
+            }
+
+            // Accept the incoming call
+            setIncomingCall({
+              remotePubkey: senderPubkey,
+              offer: callOffer,
+              callType: callOffer.callType,
+            });
+            return 'ringing';
           });
-          setCallState('ringing');
         }
       );
     };
@@ -171,6 +180,8 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
       signalingRef.current.cleanup();
     }
 
+    // Clear incoming call data
+    setIncomingCall(null);
     setCallState('idle');
     setCurrentSession(null);
     setLocalStream(null);
@@ -287,6 +298,12 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
 
     try {
       const { remotePubkey, offer, callType } = incomingCall;
+      
+      console.log('Answering call from:', remotePubkey.slice(0, 8));
+      
+      // Clear incoming call immediately to prevent duplicate
+      setIncomingCall(null);
+      setCallState('calling');
 
       // Initialize local media
       const constraints: MediaStreamConstraints = {
@@ -294,24 +311,39 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
         video: callType === 'video',
       };
       
+      console.log('Initializing local media for answer...');
       const stream = await webrtcManagerRef.current.initializeLocalMedia(constraints);
       setLocalStream(stream);
+      console.log('Local media initialized');
+
+      // Create session before answering
+      setCurrentSession({
+        callId: offer.callId,
+        remotePubkey,
+        callType,
+        isInitiator: false,
+        state: 'calling',
+      });
 
       // Answer the call
+      console.log('Sending answer...');
       await signalingRef.current.answerCall(
         remotePubkey,
         offer,
         () => {
           // On connect
+          console.log('Call connected successfully');
           setCallState('connected');
           setCurrentSession((prev) => (prev ? { ...prev, state: 'connected', startTime: Date.now() } : null));
         },
         (stream: MediaStream) => {
           // On remote stream
+          console.log('Remote stream received');
           setRemoteStream(stream);
         },
         () => {
           // On close
+          console.log('Call closed by remote');
           cleanup();
         },
         (error: Error) => {
@@ -321,18 +353,10 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
           cleanup();
         }
       );
-
-      setCurrentSession({
-        callId: offer.callId,
-        remotePubkey,
-        callType,
-        isInitiator: false,
-        state: 'connected',
-      });
-      setIncomingCall(null);
     } catch (error) {
       console.error('Failed to answer call:', error);
       setCallState('failed');
+      setIncomingCall(null);
       cleanup();
       throw error;
     }

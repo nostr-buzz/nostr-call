@@ -152,13 +152,19 @@ export class SignalingCoordinator {
     message: SignalingMessage,
     _remotePubkey: string
   ): Promise<void> {
-    // Ignore messages from other calls
-    if (message.callId !== this.currentCallId) {
-      console.debug('Ignoring message from different call:', message.callId);
+    // Ignore messages if no active call
+    if (!this.currentCallId) {
+      console.debug('Ignoring message - no active call');
       return;
     }
 
-    console.log(`Handling signaling message: ${message.type}`);
+    // Ignore messages from other calls
+    if (message.callId !== this.currentCallId) {
+      console.debug('Ignoring message from different call:', message.callId, 'current:', this.currentCallId);
+      return;
+    }
+
+    console.log(`Handling signaling message: ${message.type} for call ${message.callId}`);
 
     switch (message.type) {
       case 'call-offer':
