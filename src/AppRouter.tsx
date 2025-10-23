@@ -9,7 +9,7 @@ import NotFound from "./pages/NotFound";
 
 export function AppRouter() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/nostr-call">
       <ScrollToTop />
       <GlobalIncomingCallHandler />
       <Routes>
