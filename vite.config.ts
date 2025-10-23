@@ -9,6 +9,10 @@ export default defineConfig(() => ({
     host: "::",
     port: 8080,
   },
+  define: {
+    global: 'globalThis',
+    'process.env': {},
+  },
   plugins: [
     react(),
   ],
@@ -26,6 +30,15 @@ export default defineConfig(() => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      stream: 'readable-stream',
+      buffer: 'buffer',
+    },
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      define: {
+        global: 'globalThis',
+      },
     },
   },
 }));

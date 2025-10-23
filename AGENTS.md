@@ -1085,3 +1085,461 @@ Run available tools in this priority order:
 - Create a git commit when your changes are complete
 
 The validation ensures code quality and catches errors before deployment, regardless of the development environment.
+
+
+## Copilot Task: Build a Production-grade WebRTC + Nostr Calling App (with Nostrify)
+
+**Goal**
+Build a secure, low-latency 1:1 and group calling web app. Use **Nostr (via Nostrify)** for decentralized identity + signaling (offers/answers/candidates), and **WebRTC** for the media path. Support TURN, E2E negotiation, adaptive bitrate, and recording hooks. Write clean, modular TypeScript.
+
+### Tech Stack
+
+* **Frontend**: React (Next.js/SPA), TypeScript, Vite or Next 15+, Tailwind (UI), Zustand or Redux Toolkit (state).
+* **Nostr**: **Nostrify** as the abstraction over `nostr-tools/ndk` (inject relay URLs, key mgmt, NIP-04/44 DMs, NIP-05 verification).
+* **Media**: WebRTC (RTCPeerConnection, getUserMedia, MediaRecorder), simulcast/SVC where supported.
+* **Infra**: **coturn** (TURN/STUN, TCP+TLS 3478/5349), optional **SFU** (LiveKit/mediasoup/Janus) for group calls. Use Docker Compose.
+* **Testing**: Vitest/Jest + Playwright (2-peer e2e).
+* **Security**: HTTPS, DTLS-SRTP, NIP-04/44 for signaling payloads, permissions prompts.
+
+---
+
+## Features & Acceptance Criteria
+
+1. **Identity & Auth (Nostr)**
+
+* Users sign in with **npub/nsec** (local key or NIP-07/NIP-46).
+* Show verified handle if **NIP-05** present; otherwise short npub.
+* AC: After login, the app shows “You are npub…”, lists relays, and fetches profile metadata.
+
+2. **Secure Signaling over Nostr**
+
+* Signaling messages (offer/answer/candidate/ringing/busy/bye) exchanged via **encrypted DMs** (NIP-04 or NIP-44).
+* Define **custom kinds** for call invites (e.g., 24100 offer, 24101 answer, 24102 candidate, 24103 control). Payload = JSON.
+* AC: Two browsers behind different NATs can establish a call with **only Nostr relays** (no custom WS).
+
+3. **Media & Quality**
+
+* Audio: **Opus**, echoCancellation, noiseSuppression, autoGainControl.
+* Video: VP8 default; H.264 fallback; enable **simulcast** for SFU/group.
+* UI to change cam/mic/speaker on the fly; mute/unmute and camera on/off.
+* AC: Call connects < 3s on LAN / < 8s typical WAN with TURN. Switching devices doesn’t drop call.
+
+4. **TURN/STUN**
+
+* Configure **STUN + TURN** (TLS 5349). Use credentials from `.env`.
+* AC: If direct P2P fails, TURN relays traffic and call still succeeds.
+
+5. **Call States & UX**
+
+* States: `idle → calling → ringing → connecting → inCall → reconnecting → ended`.
+* “Ringing” with accept/decline; “Busy” if already in call.
+* AC: State machine renders correct UI in each state; no zombie tracks after end.
+
+6. **Group Calls (Phase 2)**
+
+* Optional **SFU**: if participants > 2, auto-escalate to SFU room; still use Nostr for **room invitation & auth**.
+* AC: 4-way call at 720p grid with adaptive bitrate.
+
+7. **Recording (Hooks)**
+
+* Client-side **MediaRecorder** (MKV/WEBM) with user consent; or server-side via SFU webhook (not mandatory in P2P).
+* AC: Start/stop recording with visible red dot indicator.
+
+8. **Reliability**
+
+* ICE restarts on network changes, auto-reconnect, re-negotiate when toggling screenshare/camera.
+* AC: Turning on screenshare mid-call renegotiates successfully.
+
+9. **Security**
+
+* All signaling payloads **E2E encrypted** (NIP-04/44).
+* Never log private keys; secure settings in `.env`.
+* AC: Static code check confirms no secrets in logs; content only via secure context (https).
+
+---
+
+## High-Level Architecture
+
+```
+Browser A (npubA)                      Nostr Relays                    Browser B (npubB)
+ ──────────────────────────────────────────────────────────────────────────────────────────
+ 1) Login (Nostrify)                     ↕  NIP-01/04/44 DMs            1) Login (Nostrify)
+ 2) Create Offer (WebRTC)  ── DM: offer ─────────────────────────────▶  2) Receive Offer
+ 3) SetLocalDesc + ICE     ◀─ DM: answer ─────────────────────────────  3) Create Answer
+ 4) Exchange ICE           ⇄  DM: candidate/candidate  ⇄              4) ICE Exchange
+ 5) Media Flow (DTLS/SRTP)  ◀────────────── P2P / via TURN ──────────▶  5) In Call
+```
+
+* For **group**: Nostr for room invites + **SFU** for media routing.
+
+---
+
+## Data Contracts (signaling payloads)
+
+// Kind 24100: Offer
+
+```ts
+type CallOffer = {
+  type: "offer";
+  sdp: string;
+  callId: string;           // uuid
+  from: string;             // npub
+  to: string;               // npub
+  media: { audio: boolean; video: boolean; screenshare?: boolean };
+  timestamp: number;
+};
+```
+
+// Kind 24101: Answer
+
+```ts
+type CallAnswer = {
+  type: "answer";
+  sdp: string;
+  callId: string;
+  from: string;
+  to: string;
+  timestamp: number;
+};
+```
+
+// Kind 24102: ICE Candidate
+
+```ts
+type CallCandidate = {
+  type: "candidate";
+  callId: string;
+  from: string;
+  to: string;
+  candidate: RTCIceCandidateInit;
+  mid?: string;
+  mlineIndex?: number;
+  timestamp: number;
+};
+```
+
+// Kind 24103: Control (ringing, busy, bye, renegotiate)
+
+```ts
+type CallControl =
+  | { type: "ringing"; callId: string; from: string; to: string; timestamp: number }
+  | { type: "busy"; callId: string; from: string; to: string; timestamp: number }
+  | { type: "bye"; callId: string; from: string; to: string; timestamp: number }
+  | { type: "renegotiate"; callId: string; from: string; to: string; reason?: string; timestamp: number };
+```
+
+---
+
+## Project Structure
+
+```
+/app
+  /components
+    CallButton.tsx
+    CallScreen.tsx
+    DevicePicker.tsx
+    LocalVideo.tsx
+    RemoteVideo.tsx
+    ScreenshareButton.tsx
+  /state
+    callStore.ts           // Zustand store (peers, tracks, state)
+  /services
+    nostrService.ts        // Nostrify wrapper (connect, dmSend, dmSubscribe)
+    signaling.ts           // encode/decode payloads, route by kind
+    webrtc.ts              // PeerConnectionManager class
+    devices.ts             // enumerate/select devices
+  /pages
+    index.tsx
+    call/[npub].tsx        // deep-link call to user
+  /utils
+    codecs.ts              // prefer codecs/simulcast
+    constraints.ts         // media constraints presets
+    ice.ts                 // TURN/STUN config loader
+/.env                      // TURN creds, relays list
+/docker
+  coturn.docker-compose.yml
+/tests
+  e2e.spec.ts
+```
+
+---
+
+## Implementation Steps (Write the Code)
+
+### 1) Nostrify Integration (`nostrService.ts`)
+
+* Connect to a configurable list of relays.
+* Expose: `login()`, `getProfile(npub)`, `sendDM(to, kind, payload)`, `onDM(callback)`.
+* Use NIP-04/44 for **encrypted** DMs; JSON.stringify payload, then encrypt.
+
+```ts
+// nostrService.ts
+import { Nostrify } from "nostrify"; // assume Nostrify SDK
+type DMHandler = (from: string, kind: number, data: unknown) => void;
+
+export class NostrService {
+  private client: Nostrify;
+  private onDm?: DMHandler;
+
+  constructor(relays: string[]) {
+    this.client = new Nostrify({ relays });
+  }
+
+  async login() {
+    await this.client.init(); // handles nsec or NIP-07
+    return this.client.getPubkey(); // npub
+  }
+
+  onDM(handler: DMHandler) {
+    this.onDm = handler;
+    this.client.subscribeDMs((evt) => {
+      try {
+        const payload = JSON.parse(evt.content);
+        this.onDm?.(evt.pubkey, evt.kind, payload);
+      } catch {}
+    });
+  }
+
+  async sendDM(toNpub: string, kind: number, payload: unknown) {
+    await this.client.sendEncryptedDM(toNpub, JSON.stringify(payload), { kind });
+  }
+}
+```
+
+### 2) WebRTC Manager (`webrtc.ts`)
+
+* Creates peer connection, sets **preferred codecs**, attaches tracks, handles ICE, emits events.
+
+```ts
+// webrtc.ts
+export type PeerEvents = {
+  onLocalTrack?: (stream: MediaStream) => void;
+  onRemoteTrack?: (stream: MediaStream) => void;
+  onIceCandidate?: (c: RTCIceCandidateInit) => void;
+  onState?: (state: RTCPeerConnectionState) => void;
+};
+
+export class PeerConnectionManager {
+  pc: RTCPeerConnection;
+  localStream?: MediaStream;
+  remoteStream = new MediaStream();
+  events: PeerEvents;
+
+  constructor(iceServers: RTCIceServer[], events: PeerEvents) {
+    this.pc = new RTCPeerConnection({ iceServers, bundlePolicy: "max-bundle" });
+    this.events = events;
+
+    this.pc.ontrack = (e) => {
+      e.streams[0].getTracks().forEach((t) => this.remoteStream.addTrack(t));
+      this.events.onRemoteTrack?.(this.remoteStream);
+    };
+    this.pc.onicecandidate = (e) => e.candidate && this.events.onIceCandidate?.(e.candidate.toJSON());
+    this.pc.onconnectionstatechange = () => this.events.onState?.(this.pc.connectionState);
+  }
+
+  async initLocal(media: { audio: boolean; video: boolean }) {
+    this.localStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: media.video ? { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } : false,
+    });
+    this.localStream.getTracks().forEach((t) => this.pc.addTrack(t, this.localStream!));
+    this.events.onLocalTrack?.(this.localStream);
+  }
+
+  async createOffer() {
+    const offer = await this.pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+    await this.pc.setLocalDescription(offer);
+    return offer.sdp!;
+  }
+
+  async createAnswer(remoteSdp: string) {
+    await this.pc.setRemoteDescription({ type: "offer", sdp: remoteSdp });
+    const answer = await this.pc.createAnswer();
+    await this.pc.setLocalDescription(answer);
+    return answer.sdp!;
+  }
+
+  async applyAnswer(remoteSdp: string) {
+    await this.pc.setRemoteDescription({ type: "answer", sdp: remoteSdp });
+  }
+
+  async addIce(c: RTCIceCandidateInit) {
+    try { await this.pc.addIceCandidate(c); } catch {}
+  }
+
+  end() {
+    this.localStream?.getTracks().forEach((t) => t.stop());
+    this.pc.close();
+  }
+}
+```
+
+### 3) Signaling Orchestration (`signaling.ts`)
+
+* Bind Nostr events to WebRTC methods; encode kinds 24100–24103.
+
+```ts
+// signaling.ts
+import { NostrService } from "./nostrService";
+import { PeerConnectionManager } from "./webrtc";
+
+const K = { OFFER: 24100, ANSWER: 24101, CANDIDATE: 24102, CTRL: 24103 };
+
+export class CallController {
+  constructor(
+    private nostr: NostrService,
+    private pcm: PeerConnectionManager,
+    private self: string,        // my npub
+    private peer: string,        // target npub
+    private callId: string
+  ) {}
+
+  init() {
+    this.nostr.onDM(async (from, kind, payload) => {
+      if (from !== this.peer) return;
+      if ((payload as any).callId !== this.callId) return;
+
+      if (kind === K.ANSWER) {
+        await this.pcm.applyAnswer((payload as any).sdp);
+      } else if (kind === K.CANDIDATE) {
+        await this.pcm.addIce((payload as any).candidate);
+      } else if (kind === K.CTRL && (payload as any).type === "bye") {
+        this.pcm.end();
+      }
+    });
+
+    this.pcm.events.onIceCandidate = (c) => this.nostr.sendDM(this.peer, K.CANDIDATE, {
+      type: "candidate", callId: this.callId, from: this.self, to: this.peer, candidate: c, timestamp: Date.now()
+    });
+  }
+
+  async startCall(media = { audio: true, video: true }) {
+    await this.pcm.initLocal(media);
+    const sdp = await this.pcm.createOffer();
+    await this.nostr.sendDM(this.peer, K.OFFER, {
+      type: "offer", sdp, callId: this.callId, from: this.self, to: this.peer, media, timestamp: Date.now()
+    });
+    await this.nostr.sendDM(this.peer, K.CTRL, { type: "ringing", callId: this.callId, from: this.self, to: this.peer, timestamp: Date.now() });
+  }
+
+  async acceptCall(offerSdp: string) {
+    const answerSdp = await this.pcm.createAnswer(offerSdp);
+    await this.nostr.sendDM(this.peer, K.ANSWER, {
+      type: "answer", sdp: answerSdp, callId: this.callId, from: this.self, to: this.peer, timestamp: Date.now()
+    });
+  }
+
+  async hangup() {
+    await this.nostr.sendDM(this.peer, K.CTRL, { type: "bye", callId: this.callId, from: this.self, to: this.peer, timestamp: Date.now() });
+    this.pcm.end();
+  }
+}
+```
+
+### 4) UI Components (examples)
+
+* **CallButton.tsx**: Start call to target npub (generate `callId = crypto.randomUUID()`), navigate to `/call/[npub]?callId=…`.
+* **CallScreen.tsx**: Shows local/remote videos, accept/decline, mute/camera toggle, screenshare.
+
+```tsx
+// CallScreen.tsx (sketch)
+export default function CallScreen({ selfNpub, peerNpub, callId }: Props) {
+  // initialize NostrService, PeerConnectionManager with ICE from env
+  // bind to CallController.init()
+  // render local/remote <video> with refs
+  // buttons: Answer, Decline, Hangup, Mute, Camera, Screenshare
+}
+```
+
+### 5) Device & Screenshare
+
+* `devices.ts`: enumerate microphones/cameras/speakers; let user pick.
+* Screenshare: `navigator.mediaDevices.getDisplayMedia()`; replace video sender track; send “renegotiate” control if needed.
+
+### 6) TURN/STUN Config (`ice.ts`, `.env`)
+
+* `.env`:
+
+```
+VITE_RELAY_URLS=wss://relay1.example.com,wss://relay2.example.com
+VITE_TURN_URLS=turns:turn.example.com:5349?transport=tcp
+VITE_TURN_USERNAME=turnuser
+VITE_TURN_CREDENTIAL=turnpass
+```
+
+* `ice.ts`:
+
+```ts
+export function iceServers(): RTCIceServer[] {
+  const urls = import.meta.env.VITE_TURN_URLS.split(",");
+  return [{ urls: "stun:stun.l.google.com:19302" }, { urls, username: import.meta.env.VITE_TURN_USERNAME, credential: import.meta.env.VITE_TURN_CREDENTIAL }];
+}
+```
+
+### 7) Docker Compose for **coturn** (`/docker/coturn.docker-compose.yml`)
+
+```yaml
+version: "3.8"
+services:
+  coturn:
+    image: coturn/coturn
+    network_mode: host
+    command:
+      - -n
+      - --log-file=stdout
+      - --min-port=49160
+      - --max-port=49200
+      - --realm=example.com
+      - --fingerprint
+      - --lt-cred-mech
+      - --user=turnuser:turnpass
+      - --no-cli
+      - --no-software-attribute
+      - --cert=/certs/fullchain.pem
+      - --pkey=/certs/privkey.pem
+      - --listening-port=3478
+      - --tls-listening-port=5349
+    volumes:
+      - ./certs:/certs:ro
+```
+
+### 8) Group Calls (Phase 2)
+
+* Add **SFU provider** (LiveKit/mediasoup). Keep **Nostr** for: room creation, invites, and per-session tokens.
+* When participants > 2, the UI prompts “Upgrade to Group”; create SFU room; publish local tracks to SFU; subscribe to others; continue sending control messages (mute/raise hand) via Nostr or SFU data channels.
+
+### 9) Recording Hooks
+
+* **Client**: `new MediaRecorder(remoteStream)` → save WebM.
+* **Server/SFU**: use provider’s recording API; store S3/Cloudflare R2; return URL via Nostr DM.
+
+### 10) Tests
+
+* **Unit**: signaling serialization/deserialization.
+* **E2E**: Playwright launches two browsers; log in with two npubs; verify call connects and audio frames flowing (getStats() > bytesReceived increases).
+
+---
+
+## Copilot: What to Generate Now (Priorities)
+
+1. Implement `nostrService.ts`, `webrtc.ts`, `signaling.ts` exactly as outlined.
+2. Create `CallScreen.tsx` page with:
+
+   * Login flow (Nostrify), relay status, target npub input, Call/Answer/Hangup buttons.
+   * Local/remote `<video>` elements (attach streams).
+   * Mute/camera/switch device/screenshare controls.
+3. Add Zustand `callStore.ts` with the state machine and actions.
+4. Add `.env` loader and `iceServers()` helper; wire TURN.
+5. Provide a minimal **Playwright** e2e that starts two peers and completes an offer/answer flow via Nostr DMs.
+6. Provide `docker/coturn.docker-compose.yml` and a short README for certs & ports.
+
+---
+
+## Notes & Constraints
+
+* Use **NIP-44** if available in Nostrify; else fallback to NIP-04.
+* Avoid storing `nsec` in localStorage; prefer NIP-07 or session-scoped memory.
+* Prefer `insertable streams` and SFrame if targeting E2E media encryption later (optional).
+* For Safari, ensure H.264 fallback and proper `getDisplayMedia` permissions.
+* Always run over **HTTPS** for getUserMedia.
+

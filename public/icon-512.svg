@@ -1,0 +1,38 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="512" height="512" fill="#000000" rx="85"/>
+  
+  <!-- Phone icon -->
+  <g transform="translate(256, 256)">
+    <!-- Phone receiver -->
+    <path d="M -90 -70 Q -105 -85 -90 -95 L -65 -120 Q -50 -135 -40 -120 L -15 -95 Q 0 -80 -15 -65 L -25 -55 Q -15 0 25 40 Q 65 80 120 90 L 130 80 Q 145 65 160 80 L 185 105 Q 200 120 185 135 L 160 160 Q 145 175 130 160 Q 40 105 -40 25 Q -120 -55 -80 -55 Z" 
+          fill="#10b981" 
+          stroke="#10b981" 
+          stroke-width="5"/>
+    
+    <!-- Signal waves -->
+    <path d="M 65 -80 Q 90 -65 90 -40" 
+          fill="none" 
+          stroke="#10b981" 
+          stroke-width="8" 
+          stroke-linecap="round"/>
+    <path d="M 85 -100 Q 120 -80 120 -40" 
+          fill="none" 
+          stroke="#10b981" 
+          stroke-width="8" 
+          stroke-linecap="round"/>
+    <path d="M 100 -120 Q 145 -95 145 -40" 
+          fill="none" 
+          stroke="#10b981" 
+          stroke-width="8" 
+          stroke-linecap="round"/>
+  </g>
+  
+  <!-- Nostr text -->
+  <text x="256" y="450" 
+        font-family="Arial, sans-serif" 
+        font-size="48" 
+        font-weight="bold" 
+        fill="#10b981" 
+        text-anchor="middle">NOSTR</text>
+</svg>

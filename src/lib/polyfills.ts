@@ -1,4 +1,19 @@
 import Buffer from 'buffer';
+import process from 'process';
+
+/**
+ * Polyfill for process in browser environment
+ */
+if (!globalThis.process) {
+  globalThis.process = process;
+}
+
+// Polyfill for process.nextTick if not available
+if (globalThis.process && !globalThis.process.nextTick) {
+  globalThis.process.nextTick = function(callback: (...args: unknown[]) => void, ...args: unknown[]) {
+    queueMicrotask(() => callback(...args));
+  };
+}
 
 /**
  * Polyfill for Buffer in browser environment
