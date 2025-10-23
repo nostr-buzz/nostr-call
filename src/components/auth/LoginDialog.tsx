@@ -182,15 +182,15 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin, onS
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent
-        className={cn("max-w-[95vw] sm:max-w-md max-h-[90vh] max-h-[90dvh] p-0 overflow-hidden rounded-2xl overflow-y-scroll")}
+        className={cn("max-w-[95vw] sm:max-w-md max-h-[90vh] max-h-[90dvh] p-0 overflow-hidden rounded-2xl flex flex-col")}
       >
-        <DialogHeader className={cn('px-6 pt-6 pb-1 relative')}>
+        <DialogHeader className={cn('px-6 pt-6 pb-1 relative flex-shrink-0')}>
 
             <DialogDescription className="text-center">
               Sign up or log in to continue
             </DialogDescription>
         </DialogHeader>
-        <div className='px-6 pt-2 pb-4 space-y-4 overflow-y-auto flex-1'>
+        <div className='px-6 pt-2 pb-4 space-y-4 overflow-y-auto flex-1 scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent'>
           {/* Prominent Sign Up Section */}
           <div className='relative p-4 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-950/50 dark:to-indigo-950/50 border border-blue-200 dark:border-blue-800 overflow-hidden'>
             <div className='relative z-10 text-center space-y-3'>
@@ -316,6 +316,8 @@ const LoginDialog: React.FC<LoginDialogProps> = ({ isOpen, onClose, onLogin, onS
                     className='hidden'
                     ref={fileInputRef}
                     onChange={handleFileUpload}
+                    aria-label="Upload secret key file"
+                    title="Upload a text file containing your secret key"
                   />
                   <Button
                     variant='outline'

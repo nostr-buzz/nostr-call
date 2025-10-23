@@ -301,7 +301,7 @@ const SignupDialog: React.FC<SignupDialogProps> = ({ isOpen, onClose, onComplete
             {getTitle()}
           </DialogTitle>
         </DialogHeader>
-        <div className='px-6 pt-2 pb-4 space-y-4 overflow-y-scroll flex-1'>
+        <div className='px-6 pt-2 pb-4 space-y-4 overflow-y-auto flex-1 scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent'>
           {/* Welcome Step - New engaging introduction */}
           {step === 'welcome' && (
             <div className='text-center space-y-4'>
@@ -641,6 +641,7 @@ const SignupDialog: React.FC<SignupDialogProps> = ({ isOpen, onClose, onComplete
                       className='hidden'
                       ref={avatarFileInputRef}
                       onChange={handleAvatarUpload}
+                      aria-label='Upload avatar image'
                     />
                     <Button
                       type='button'
