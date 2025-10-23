@@ -50,11 +50,35 @@ interface CallProviderProps {
   children: React.ReactNode;
 }
 
-// Default STUN/TURN servers (public Google STUN servers)
+// Professional STUN/TURN servers for reliable connections
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
+  // Google STUN servers (multiple for redundancy)
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
+  
+  // Additional reliable STUN servers
+  { urls: 'stun:stun.services.mozilla.com:3478' },
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  
+  // Open Relay Project (free TURN servers)
+  {
+    urls: 'turn:openrelay.metered.ca:80',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
 ];
 
 export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
@@ -166,24 +190,40 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
       throw new Error('Call services not initialized');
     }
 
+    let connectionTimeout: ReturnType<typeof setTimeout> | null = null;
+
     try {
       setCallState('calling');
 
-      // Initialize local media
+      // Initialize local media with timeout
       const constraints: MediaStreamConstraints = {
         audio: true,
         video: callType === 'video',
       };
       
+      console.log('Requesting media access...', constraints);
       const stream = await webrtcManagerRef.current.initializeLocalMedia(constraints);
       setLocalStream(stream);
+      console.log('Media access granted');
+
+      // Set connection timeout (60 seconds)
+      connectionTimeout = setTimeout(() => {
+        console.error('Connection timeout - call failed to establish');
+        setCallState('failed');
+        cleanup();
+      }, 60000);
 
       // Initiate signaling
+      console.log('Starting WebRTC signaling...');
       const callId = await signalingRef.current.initiateCall(
         remotePubkey,
         callType,
         () => {
-          // On connect
+          // On connect - clear timeout
+          if (connectionTimeout) {
+            clearTimeout(connectionTimeout);
+          }
+          console.log('Call connected successfully!');
           setCallState('connected');
           setCurrentSession({
             callId,
@@ -196,20 +236,29 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
         },
         (stream: MediaStream) => {
           // On remote stream
+          console.log('Remote stream received');
           setRemoteStream(stream);
         },
         () => {
           // On close
+          if (connectionTimeout) {
+            clearTimeout(connectionTimeout);
+          }
+          console.log('Call closed');
           cleanup();
         },
         (error: Error) => {
           // On error
+          if (connectionTimeout) {
+            clearTimeout(connectionTimeout);
+          }
           console.error('Call error:', error);
           setCallState('failed');
           cleanup();
         }
       );
 
+      console.log('Call initiated with ID:', callId);
       setCurrentSession({
         callId,
         remotePubkey,
@@ -218,6 +267,9 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
         state: 'calling',
       });
     } catch (error) {
+      if (connectionTimeout) {
+        clearTimeout(connectionTimeout);
+      }
       console.error('Failed to start call:', error);
       setCallState('failed');
       cleanup();

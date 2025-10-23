@@ -135,6 +135,21 @@ export class WebRTCManager {
         trickle: true,
         config: {
           iceServers: this.config.iceServers,
+          // Aggressive ICE gathering for better connectivity
+          iceTransportPolicy: 'all',
+          bundlePolicy: 'max-bundle',
+          rtcpMuxPolicy: 'require',
+          // Enable all ICE candidate types
+          iceCandidatePoolSize: 10,
+        },
+        // Use more aggressive connection options
+        offerOptions: {
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true,
+        },
+        answerOptions: {
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true,
         },
       });
 

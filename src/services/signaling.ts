@@ -200,6 +200,7 @@ export class SignalingCoordinator {
     callId: string,
     signalData: SignalData
   ): Promise<void> {
+    console.log(`Sending ${signalData.type || 'signal'} to ${remotePubkey.slice(0, 8)}...`);
     let message: SignalingMessage;
 
     if (signalData.type === 'offer') {

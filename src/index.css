@@ -141,4 +141,9 @@
     -webkit-playsinline: true;
     object-fit: cover;
   }
+
+  /* Incoming call progress bar animation */
+  [data-progress] {
+    width: calc(var(--progress, 0) * 1%);
+  }
 }
