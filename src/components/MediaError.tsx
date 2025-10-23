@@ -21,8 +21,8 @@ export function MediaError({ error, onRetry }: MediaErrorProps) {
       return {
         icon: Lock,
         title: 'HTTPS Required',
-        description: 'برای امنیت، دسترسی به دوربین/میکروفون فقط در HTTPS امکان‌پذیر است.',
-        solution: 'لطفاً از HTTPS یا localhost استفاده کنید.',
+        description: 'For security, camera/microphone access is only available over HTTPS.',
+        solution: 'Please use HTTPS or localhost.',
         color: 'text-yellow-500',
       };
     }
@@ -30,9 +30,9 @@ export function MediaError({ error, onRetry }: MediaErrorProps) {
     if (errorMessage.includes('permission') || errorMessage.includes('denied')) {
       return {
         icon: Camera,
-        title: 'دسترسی رد شد',
-        description: 'شما اجازه دسترسی به دوربین/میکروفون را نداده‌اید.',
-        solution: 'لطفاً در تنظیمات مرورگر، دسترسی به دوربین و میکروفون را فعال کنید.',
+        title: 'Permission Denied',
+        description: 'You have not granted access to camera/microphone.',
+        solution: 'Please enable camera and microphone access in your browser settings.',
         color: 'text-red-500',
       };
     }
@@ -40,9 +40,9 @@ export function MediaError({ error, onRetry }: MediaErrorProps) {
     if (errorMessage.includes('not found')) {
       return {
         icon: Mic,
-        title: 'دستگاه پیدا نشد',
-        description: 'دوربین یا میکروفونی یافت نشد.',
-        solution: 'لطفاً اطمینان حاصل کنید که دستگاه متصل و فعال است.',
+        title: 'Device Not Found',
+        description: 'No camera or microphone was found.',
+        solution: 'Please make sure the device is connected and enabled.',
         color: 'text-orange-500',
       };
     }
@@ -50,9 +50,9 @@ export function MediaError({ error, onRetry }: MediaErrorProps) {
     if (errorMessage.includes('in use') || errorMessage.includes('readable')) {
       return {
         icon: Camera,
-        title: 'دستگاه در حال استفاده',
-        description: 'دوربین یا میکروفون توسط برنامه دیگری استفاده می‌شود.',
-        solution: 'لطفاً برنامه‌های دیگر را ببندید و دوباره امتحان کنید.',
+        title: 'Device In Use',
+        description: 'Camera or microphone is being used by another application.',
+        solution: 'Please close other applications and try again.',
         color: 'text-orange-500',
       };
     }
@@ -60,18 +60,18 @@ export function MediaError({ error, onRetry }: MediaErrorProps) {
     if (errorMessage.includes('not supported')) {
       return {
         icon: AlertCircle,
-        title: 'مرورگر پشتیبانی نمی‌کند',
-        description: 'مرورگر شما از دسترسی به دوربین/میکروفون پشتیبانی نمی‌کند.',
-        solution: 'لطفاً از مرورگر مدرن (Chrome, Safari 11+, Firefox) استفاده کنید.',
+        title: 'Browser Not Supported',
+        description: 'Your browser does not support camera/microphone access.',
+        solution: 'Please use a modern browser (Chrome, Safari 11+, Firefox).',
         color: 'text-red-500',
       };
     }
 
     return {
       icon: AlertCircle,
-      title: 'خطا در دسترسی به رسانه',
+      title: 'Media Access Error',
       description: error.message,
-      solution: 'لطفاً دوباره امتحان کنید یا از مرورگر دیگری استفاده کنید.',
+      solution: 'Please try again or use a different browser.',
       color: 'text-red-500',
     };
   };
@@ -90,26 +90,26 @@ export function MediaError({ error, onRetry }: MediaErrorProps) {
           <p className="text-sm">{errorInfo.description}</p>
           
           <div className="bg-muted/50 p-3 rounded-md">
-            <p className="text-sm font-medium mb-2">💡 راه‌حل:</p>
+            <p className="text-sm font-medium mb-2">💡 Solution:</p>
             <p className="text-sm text-muted-foreground">{errorInfo.solution}</p>
           </div>
 
           {errorMessage.includes('https') && (
             <div className="bg-blue-500/10 p-3 rounded-md border border-blue-500/20">
               <p className="text-sm font-medium mb-2 text-blue-600 dark:text-blue-400">
-                📱 برای iOS Safari:
+                📱 For iOS Safari:
               </p>
               <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
-                <li>باید از HTTPS استفاده کنید</li>
-                <li>یا از تونل (ngrok, localhost.run) استفاده کنید</li>
-                <li>یا در شبکه محلی با HTTPS سرور راه‌اندازی کنید</li>
+                <li>You must use HTTPS</li>
+                <li>Or use a tunnel (ngrok, localhost.run)</li>
+                <li>Or set up an HTTPS server on your local network</li>
               </ul>
             </div>
           )}
 
           {onRetry && (
             <Button onClick={onRetry} className="w-full mt-4">
-              تلاش مجدد
+              Try Again
             </Button>
           )}
         </AlertDescription>
