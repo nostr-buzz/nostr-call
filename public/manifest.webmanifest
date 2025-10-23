@@ -2,21 +2,21 @@
   "name": "Nostr Call",
   "short_name": "Nostr Call",
   "description": "Secure, decentralized voice and video calling over Nostr protocol with end-to-end encryption",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "/nostr-call/",
+  "scope": "/nostr-call/",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#000000",
   "theme_color": "#10b981",
   "icons": [
     {
-      "src": "/icon-192.svg",
+      "src": "/nostr-call/icon-192.svg",
       "sizes": "192x192",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     },
     {
-      "src": "/icon-512.svg",
+      "src": "/nostr-call/icon-512.svg",
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"
