@@ -9,6 +9,12 @@ import type { NPool, NostrEvent, NostrFilter } from '@nostrify/nostrify';
 import type { NUser } from '@nostrify/react/login';
 import type { SignalingMessage } from '@/types/call';
 
+// Enhanced logging
+const logDebug = (category: string, message: string, data?: unknown) => {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] [Nostr/${category}] ${message}`, data || '');
+};
+
 /**
  * Convert npub to hex pubkey if needed
  */
@@ -68,10 +74,20 @@ export class NostrService {
       };
 
       // Sign and publish
+      logDebug('SendMessage', `Signing ${message.type} event`, {
+        kind: 1004,
+        recipientPubkey: hexPubkey.slice(0, 8) + '...',
+        messageType: message.type,
+      });
       const signedEvent = await this.user.signer.signEvent(callEvent);
+      
+      logDebug('SendMessage', `Publishing ${message.type} to relays`);
       await this.pool.event(signedEvent, { signal: AbortSignal.timeout(5000) });
-
-      console.log(`📞 [Kind 1004] Sent ${message.type} to ${hexPubkey.slice(0, 8)}...`);
+      
+      logDebug('SendMessage', `✓ ${message.type} sent successfully`, {
+        recipientPubkey: hexPubkey.slice(0, 8) + '...',
+        callId: message.callId,
+      });
     } catch (error) {
       console.error('Failed to send signaling message:', error);
       throw new Error(`Failed to send signaling message: ${error}`);
@@ -106,15 +122,25 @@ export class NostrService {
       },
     ];
 
+    logDebug('Subscribe', `Subscribing to kind 1004 from remote peer`, {
+      remotePubkey: hexPubkey.slice(0, 8) + '...',
+      myPubkey: myPubkey.slice(0, 8) + '...',
+    });
+
     // Use AbortController for cleanup
     const abortController = new AbortController();
     
     // Subscribe to events using req
     (async () => {
       try {
+        logDebug('Subscribe', '✓ Subscription active, listening for messages');
         for await (const msg of this.pool.req(filters, { signal: abortController.signal })) {
           if (msg[0] === 'EVENT') {
             const event = msg[2] as NostrEvent;
+            logDebug('ReceiveEvent', 'Received kind 1004 event', {
+              eventId: event.id.slice(0, 8) + '...',
+              author: event.pubkey.slice(0, 8) + '...',
+            });
             
             try {
               // Decrypt the message using NIP-44
@@ -123,6 +149,7 @@ export class NostrService {
                 continue;
               }
 
+              logDebug('Decrypt', 'Decrypting message content');
               const decryptedContent = await this.user.signer.nip44.decrypt(
                 event.pubkey,
                 event.content
@@ -130,14 +157,21 @@ export class NostrService {
 
               // Parse the signaling message
               const message: SignalingMessage = JSON.parse(decryptedContent);
+              logDebug('Decrypt', `✓ Decrypted ${message.type} message`, {
+                callId: message.callId,
+                messageType: message.type,
+              });
 
               // Validate message structure
               if (!message.type || !message.callId) {
-                console.warn('Invalid signaling message:', message);
+                logDebug('Validate', 'Invalid signaling message (missing type or callId)', message);
                 continue;
               }
 
-              console.log(`📞 [Kind 1004] Received ${message.type} from ${event.pubkey.slice(0, 8)}...`);
+              logDebug('ProcessMessage', `✓ Processing ${message.type}`, {
+                callId: message.callId,
+                from: event.pubkey.slice(0, 8) + '...',
+              });
               onMessage(message);
             } catch (error) {
               console.error('Failed to decrypt/parse signaling message:', error);

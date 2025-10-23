@@ -7,6 +7,12 @@ import SimplePeer from 'simple-peer';
 import type { Instance as SimplePeerInstance, SignalData } from 'simple-peer';
 import type { CallConfig, CallStats, MediaState } from '@/types/call';
 
+// Enhanced logging for debugging
+const logDebug = (category: string, message: string, data?: unknown) => {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] [WebRTC/${category}] ${message}`, data || '');
+};
+
 /**
  * Check if getUserMedia is available (with polyfill for older browsers)
  */
@@ -64,6 +70,9 @@ export class WebRTCManager {
 
   constructor(config: CallConfig) {
     this.config = config;
+    logDebug('Constructor', 'WebRTCManager initialized', { 
+      iceServers: config.iceServers.length 
+    });
   }
 
   /**
@@ -90,9 +99,11 @@ export class WebRTCManager {
 
       this.localStream = await mediaDevices.getUserMedia(constraints);
       
-      console.log('Local media initialized:', {
+      logDebug('Media', 'Local media initialized', {
         audio: this.localStream.getAudioTracks().length > 0,
         video: this.localStream.getVideoTracks().length > 0,
+        audioTracks: this.localStream.getAudioTracks().length,
+        videoTracks: this.localStream.getVideoTracks().length,
       });
       
       return this.localStream;
@@ -155,37 +166,46 @@ export class WebRTCManager {
 
       // Handle signaling data (to be sent via Nostr)
       this.peer.on('signal', (data: SignalData) => {
-        console.log('WebRTC signal generated:', data.type);
+        logDebug('Signal', `Signal generated: ${data.type}`, { 
+          type: data.type,
+          hasCandidate: 'candidate' in data,
+        });
         onSignal(data);
       });
 
       // Handle incoming remote stream
       this.peer.on('stream', (stream: MediaStream) => {
-        console.log('Remote stream received');
+        logDebug('Stream', 'Remote stream received', {
+          audioTracks: stream.getAudioTracks().length,
+          videoTracks: stream.getVideoTracks().length,
+        });
         this.remoteStream = stream;
         onStream(stream);
       });
 
       // Handle connection established
       this.peer.on('connect', () => {
-        console.log('Peer connection established');
+        logDebug('Connection', '✓ Peer connection ESTABLISHED');
         onConnect();
       });
 
       // Handle connection closed
       this.peer.on('close', () => {
-        console.log('Peer connection closed');
+        logDebug('Connection', 'Peer connection closed');
         this.cleanup();
         onClose();
       });
 
       // Handle errors
       this.peer.on('error', (err: Error) => {
-        console.error('Peer connection error:', err);
+        logDebug('Error', `Peer error: ${err.message}`, { error: err });
         onError(err);
       });
 
-      console.log(`Peer created (initiator: ${isInitiator})`);
+      logDebug('Peer', `Peer created (initiator: ${isInitiator})`, {
+        hasLocalStream: !!this.localStream,
+        iceServers: this.config.iceServers.length,
+      });
       return this.peer;
     } catch (error) {
       console.error('Failed to create peer:', error);
@@ -202,10 +222,14 @@ export class WebRTCManager {
     }
 
     try {
+      logDebug('Signal', `Processing incoming signal: ${signalData.type}`, {
+        type: signalData.type,
+        hasCandidate: 'candidate' in signalData,
+      });
       this.peer.signal(signalData);
-      console.log('Signaling data processed:', signalData.type);
+      logDebug('Signal', `✓ Signal processed successfully: ${signalData.type}`);
     } catch (error) {
-      console.error('Failed to process signal:', error);
+      logDebug('Error', `Failed to process signal: ${error}`, { error });
       throw error;
     }
   }

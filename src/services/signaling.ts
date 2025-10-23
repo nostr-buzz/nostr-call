@@ -14,6 +14,12 @@ import type {
   CallType,
 } from '@/types/call';
 
+// Enhanced logging
+const logDebug = (category: string, message: string, data?: unknown) => {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] [Signaling/${category}] ${message}`, data || '');
+};
+
 export class SignalingCoordinator {
   private nostrService: NostrService;
   private webrtcManager: WebRTCManager;
@@ -39,30 +45,43 @@ export class SignalingCoordinator {
     const callId = this.generateCallId();
     this.currentCallId = callId;
 
-    console.log(`Initiating ${callType} call to ${remotePubkey.slice(0, 8)}...`);
+    logDebug('InitiateCall', `Initiating ${callType} call`, {
+      remotePubkey: remotePubkey.slice(0, 8) + '...',
+      callId,
+      callType,
+    });
 
     // Subscribe to signaling messages from remote peer
+    logDebug('Subscribe', 'Subscribing to signaling messages from remote peer');
     this.unsubscribeSignaling = await this.nostrService.subscribeToSignaling(
       remotePubkey,
       (message) => this.handleSignalingMessage(message, remotePubkey)
     );
+    logDebug('Subscribe', '✓ Subscribed to signaling messages');
 
     // Create WebRTC peer as initiator
+    logDebug('Peer', 'Creating WebRTC peer (initiator)');
     this.webrtcManager.createPeer(
       true, // isInitiator
       (signalData: SignalData) => {
         // Send WebRTC signal via Nostr
+        logDebug('SendSignal', `Sending ${signalData.type} via Nostr`, {
+          callId,
+          remotePubkey: remotePubkey.slice(0, 8) + '...',
+        });
         this.sendWebRTCSignal(remotePubkey, callId, signalData);
       },
       onStream,
       onConnect,
       () => {
+        logDebug('Cleanup', 'Call ended, cleaning up');
         this.cleanup();
         onClose();
       },
       onError
     );
 
+    logDebug('InitiateCall', '✓ Call initiation complete', { callId });
     return callId;
   }
 
@@ -80,24 +99,34 @@ export class SignalingCoordinator {
     const { callId, offer } = offerMessage;
     this.currentCallId = callId;
 
-    console.log(`Answering call from ${remotePubkey.slice(0, 8)}...`);
+    logDebug('AnswerCall', `Answering call from remote peer`, {
+      remotePubkey: remotePubkey.slice(0, 8) + '...',
+      callId,
+    });
 
     // Subscribe to signaling messages from remote peer
+    logDebug('Subscribe', 'Subscribing to signaling messages');
     this.unsubscribeSignaling = await this.nostrService.subscribeToSignaling(
       remotePubkey,
       (message) => this.handleSignalingMessage(message, remotePubkey)
     );
 
     // Create WebRTC peer as answerer
+    logDebug('Peer', 'Creating WebRTC peer (answerer)');
     this.webrtcManager.createPeer(
       false, // isInitiator
       (signalData: SignalData) => {
         // Send WebRTC signal via Nostr
+        logDebug('SendSignal', `Sending ${signalData.type} via Nostr`, {
+          callId,
+          remotePubkey: remotePubkey.slice(0, 8) + '...',
+        });
         this.sendWebRTCSignal(remotePubkey, callId, signalData);
       },
       onStream,
       onConnect,
       () => {
+        logDebug('Cleanup', 'Call ended, cleaning up');
         this.cleanup();
         onClose();
       },
@@ -105,7 +134,9 @@ export class SignalingCoordinator {
     );
 
     // Process the offer
+    logDebug('ProcessOffer', 'Processing remote offer');
     this.webrtcManager.signal(offer as SignalData);
+    logDebug('AnswerCall', '✓ Call answer complete');
   }
 
   /**
@@ -154,40 +185,52 @@ export class SignalingCoordinator {
   ): Promise<void> {
     // Ignore messages if no active call
     if (!this.currentCallId) {
-      console.debug('Ignoring message - no active call');
+      logDebug('HandleMessage', 'Ignoring message - no active call', { messageType: message.type });
       return;
     }
 
     // Ignore messages from other calls
     if (message.callId !== this.currentCallId) {
-      console.debug('Ignoring message from different call:', message.callId, 'current:', this.currentCallId);
+      logDebug('HandleMessage', 'Ignoring message from different call', {
+        messageCallId: message.callId,
+        currentCallId: this.currentCallId,
+      });
       return;
     }
 
-    console.log(`Handling signaling message: ${message.type} for call ${message.callId}`);
+    logDebug('HandleMessage', `Processing ${message.type}`, {
+      callId: message.callId,
+      messageType: message.type,
+    });
 
     switch (message.type) {
       case 'call-offer':
         // Offers should be handled separately through answerCall
-        console.warn('Received offer in active call, ignoring');
+        logDebug('HandleMessage', 'Received offer in active call, ignoring');
         break;
 
       case 'call-answer': {
         // Process the answer
+        logDebug('ProcessAnswer', 'Processing remote answer');
         const answerMsg = message as CallAnswerMessage;
         this.webrtcManager.signal(answerMsg.answer as SignalData);
+        logDebug('ProcessAnswer', '✓ Answer processed successfully');
         break;
       }
 
       case 'ice-candidate': {
         // Process ICE candidate
         const candidateMsg = message as IceCandidateMessage;
+        logDebug('ProcessCandidate', 'Processing ICE candidate', {
+          candidate: candidateMsg.candidate.candidate,
+        });
         this.webrtcManager.signal(candidateMsg.candidate as SignalData);
+        logDebug('ProcessCandidate', '✓ ICE candidate processed');
         break;
       }
 
       case 'call-hangup':
-        console.log('Remote peer hung up');
+        logDebug('Hangup', 'Remote peer hung up');
         this.cleanup();
         break;
 
