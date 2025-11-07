@@ -1,6 +1,6 @@
 /**
  * Calling Screen Component
- * Shows the outgoing call interface with calling animation
+ * Shows the outgoing call interface with calling animation and call timer when connected
  */
 
 import { Phone, PhoneOff } from 'lucide-react';
@@ -10,19 +10,52 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { useCall } from '@/hooks/useCall';
 import { useEffect, useState } from 'react';
+import type { CallState } from '@/types/call';
 
 interface CallingScreenProps {
   remotePubkey: string;
   callType: 'audio' | 'video';
+  callState: CallState;
 }
 
-export function CallingScreen({ remotePubkey, callType }: CallingScreenProps) {
+// Hook for call timer
+function useCallTimer(isConnected: boolean) {
+  const [duration, setDuration] = useState(0);
+
+  useEffect(() => {
+    if (!isConnected) {
+      setDuration(0);
+      return;
+    }
+
+    const startTime = Date.now();
+    const interval = setInterval(() => {
+      setDuration(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isConnected]);
+
+  // Format duration as MM:SS
+  const formatDuration = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  return formatDuration(duration);
+}
+
+export function CallingScreen({ remotePubkey, callType, callState }: CallingScreenProps) {
   const { hangup } = useCall();
   const author = useAuthor(remotePubkey);
   const metadata = author.data?.metadata;
   const displayName = metadata?.name || genUserName(remotePubkey);
   const avatar = metadata?.picture;
   const [dots, setDots] = useState('');
+  
+  const isConnected = callState === 'connected';
+  const callTimer = useCallTimer(isConnected);
 
   // Animated dots for calling state
   useEffect(() => {
@@ -44,13 +77,17 @@ export function CallingScreen({ remotePubkey, callType }: CallingScreenProps) {
       {/* Avatar and Info */}
       <div className="flex-1 flex flex-col items-center justify-center space-y-8 px-8">
         <div className="relative">
-          {/* Pulsing rings animation */}
-          <div className="absolute inset-0 animate-ping">
-            <div className="h-40 w-40 rounded-full border-2 border-white/30" />
-          </div>
-          <div className="absolute inset-0 animate-pulse delay-300">
-            <div className="h-40 w-40 rounded-full border-2 border-white/20" />
-          </div>
+          {/* Pulsing rings animation - only show when calling */}
+          {!isConnected && (
+            <>
+              <div className="absolute inset-0 animate-ping">
+                <div className="h-40 w-40 rounded-full border-2 border-white/30" />
+              </div>
+              <div className="absolute inset-0 animate-pulse delay-300">
+                <div className="h-40 w-40 rounded-full border-2 border-white/20" />
+              </div>
+            </>
+          )}
           
           {/* Avatar */}
           <Avatar className="h-40 w-40 border-4 border-white/50">
@@ -64,11 +101,17 @@ export function CallingScreen({ remotePubkey, callType }: CallingScreenProps) {
         {/* Name and Status */}
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-light">{displayName}</h1>
-          <p className="text-xl text-white/80">
-            Calling{dots}
-          </p>
+          {isConnected ? (
+            <p className="text-2xl font-mono text-white/90 tracking-wider">
+              {callTimer}
+            </p>
+          ) : (
+            <p className="text-xl text-white/80">
+              Calling{dots}
+            </p>
+          )}
           <p className="text-sm text-white/60 capitalize">
-            {callType} call
+            {callType} call {isConnected ? '• Connected' : ''}
           </p>
         </div>
 

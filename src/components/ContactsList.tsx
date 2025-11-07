@@ -3,13 +3,15 @@
  * Displays contacts with search and ability to add/remove
  */
 
-import { Phone, Video, Trash2, UserPlus, Search } from 'lucide-react';
+import { Phone, Video, Trash2, UserPlus, Search, AlertCircle } from 'lucide-react';
 import { useContacts, type Contact } from '@/hooks/useContacts';
 import { useAuthor } from '@/hooks/useAuthor';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { genUserName } from '@/lib/genUserName';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useState } from 'react';
 import {
   Dialog,
@@ -18,20 +20,23 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { validateAndConvertPubkey, isSelfCall } from '@/utils/contactUtils';
 
 interface ContactsListProps {
   onCall?: (pubkey: string, type: 'audio' | 'video') => void;
 }
 
-function ContactItem({ contact, onCall, onRemove }: { 
+function ContactItem({ contact, onCall, onRemove, currentUserPubkey }: { 
   contact: Contact; 
   onCall: (type: 'audio' | 'video') => void;
   onRemove: () => void;
+  currentUserPubkey?: string;
 }) {
   const author = useAuthor(contact.pubkey);
   const metadata = author.data?.metadata;
   const displayName = contact.name || metadata?.name || genUserName(contact.pubkey);
   const avatar = metadata?.picture;
+  const isCurrentUser = currentUserPubkey ? isSelfCall(contact.pubkey, currentUserPubkey) : false;
 
   return (
     <div className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors group">
@@ -54,7 +59,9 @@ function ContactItem({ contact, onCall, onRemove }: {
           variant="ghost"
           size="sm"
           onClick={() => onCall('audio')}
-          className="h-9 w-9 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+          disabled={isCurrentUser}
+          className="h-9 w-9 p-0 text-green-600 hover:text-green-700 hover:bg-green-50 disabled:opacity-30 disabled:cursor-not-allowed"
+          title={isCurrentUser ? "You cannot call yourself" : "Audio call"}
         >
           <Phone className="h-4 w-4" />
         </Button>
@@ -62,7 +69,9 @@ function ContactItem({ contact, onCall, onRemove }: {
           variant="ghost"
           size="sm"
           onClick={() => onCall('video')}
-          className="h-9 w-9 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+          disabled={isCurrentUser}
+          className="h-9 w-9 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50 disabled:opacity-30 disabled:cursor-not-allowed"
+          title={isCurrentUser ? "You cannot call yourself" : "Video call"}
         >
           <Video className="h-4 w-4" />
         </Button>
@@ -71,6 +80,7 @@ function ContactItem({ contact, onCall, onRemove }: {
           size="sm"
           onClick={onRemove}
           className="h-9 w-9 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+          title="Remove contact"
         >
           <Trash2 className="h-4 w-4" />
         </Button>
@@ -81,10 +91,12 @@ function ContactItem({ contact, onCall, onRemove }: {
 
 export function ContactsList({ onCall }: ContactsListProps) {
   const { contacts, addContact, removeContact } = useContacts();
+  const { user } = useCurrentUser();
   const [searchQuery, setSearchQuery] = useState('');
   const [newPubkey, setNewPubkey] = useState('');
   const [newName, setNewName] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [validationError, setValidationError] = useState<string>('');
 
   const filteredContacts = contacts.filter(contact => {
     const displayName = contact.name || genUserName(contact.pubkey);
@@ -95,15 +107,42 @@ export function ContactsList({ onCall }: ContactsListProps) {
   });
 
   const handleAddContact = () => {
-    if (newPubkey.trim()) {
-      addContact(newPubkey, newName || undefined);
-      setNewPubkey('');
-      setNewName('');
-      setDialogOpen(false);
+    setValidationError('');
+    
+    const validation = validateAndConvertPubkey(newPubkey);
+    if (!validation.isValid) {
+      setValidationError(validation.error || 'Invalid public key');
+      return;
     }
+
+    // Check if trying to add self
+    if (user && isSelfCall(validation.pubkey!, user.pubkey)) {
+      setValidationError('You cannot add yourself to contacts');
+      return;
+    }
+
+    // Check if contact already exists
+    const existingContact = contacts.find(c => c.pubkey.toLowerCase() === validation.pubkey!.toLowerCase());
+    if (existingContact) {
+      setValidationError('This contact already exists');
+      return;
+    }
+
+    // Add the contact with the validated hex pubkey
+    addContact(validation.pubkey!, newName || undefined);
+    setNewPubkey('');
+    setNewName('');
+    setValidationError('');
+    setDialogOpen(false);
   };
 
   const handleCall = (pubkey: string, type: 'audio' | 'video') => {
+    // Prevent self-calling
+    if (user && isSelfCall(pubkey, user.pubkey)) {
+      alert('You cannot call yourself');
+      return;
+    }
+
     if (onCall) {
       onCall(pubkey, type);
     }
@@ -136,6 +175,13 @@ export function ContactsList({ onCall }: ContactsListProps) {
               <DialogTitle>Add New Contact</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
+              {validationError && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{validationError}</AlertDescription>
+                </Alert>
+              )}
+              
               <div>
                 <label className="text-sm font-medium mb-2 block">
                   Pubkey (npub or hex)
@@ -144,8 +190,14 @@ export function ContactsList({ onCall }: ContactsListProps) {
                   type="text"
                   placeholder="npub1... or hex pubkey"
                   value={newPubkey}
-                  onChange={(e) => setNewPubkey(e.target.value)}
+                  onChange={(e) => {
+                    setNewPubkey(e.target.value);
+                    if (validationError) setValidationError('');
+                  }}
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Supports both npub1... and hex format
+                </p>
               </div>
               <div>
                 <label className="text-sm font-medium mb-2 block">
@@ -190,6 +242,7 @@ export function ContactsList({ onCall }: ContactsListProps) {
                 contact={contact}
                 onCall={(type) => handleCall(contact.pubkey, type)}
                 onRemove={() => removeContact(contact.id)}
+                currentUserPubkey={user?.pubkey}
               />
             ))}
           </div>

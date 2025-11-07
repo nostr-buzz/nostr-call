@@ -4,7 +4,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createHead, UnheadProvider } from '@unhead/react/client';
 import { InferSeoMetaPlugin } from '@unhead/addons';
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import NostrProvider from '@/components/NostrProvider';
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -15,6 +15,7 @@ import { CallProvider } from '@/contexts/CallContext';
 import { CallingScreen } from '@/components/CallingScreen';
 import { useCall } from '@/hooks/useCall';
 import { AppConfig } from '@/contexts/AppContext';
+import { preloadCriticalComponents } from '@/utils/preload';
 import AppRouter from './AppRouter';
 
 const head = createHead({
@@ -48,6 +49,11 @@ const presetRelays = [
 function AppContent() {
   const { callState, currentSession } = useCall();
 
+  // Initialize component preloading after initial render
+  useEffect(() => {
+    preloadCriticalComponents();
+  }, []);
+
   return (
     <>
       <Suspense>
@@ -55,10 +61,11 @@ function AppContent() {
       </Suspense>
       
       {/* Calling Screen Overlay */}
-      {callState === 'calling' && currentSession && (
+      {(callState === 'calling' || callState === 'connected') && currentSession && (
         <CallingScreen 
           remotePubkey={currentSession.remotePubkey} 
-          callType={currentSession.callType} 
+          callType={currentSession.callType}
+          callState={callState}
         />
       )}
     </>

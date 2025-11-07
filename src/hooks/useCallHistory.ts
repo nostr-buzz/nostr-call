@@ -11,7 +11,7 @@ export interface CallHistoryEntry {
   remotePubkey: string;
   callType: 'audio' | 'video';
   direction: 'incoming' | 'outgoing';
-  status: 'completed' | 'missed' | 'rejected' | 'failed';
+  status: 'calling' | 'ringing' | 'connected' | 'completed' | 'missed' | 'rejected' | 'failed';
   startTime: number;
   endTime?: number;
   duration?: number; // in seconds
@@ -37,9 +37,18 @@ export function useCallHistory() {
     setHistory((prev) => prev.filter((entry) => entry.id !== id));
   }, [setHistory]);
 
+  const updateCallHistory = useCallback((id: string, updates: Partial<Omit<CallHistoryEntry, 'id'>>) => {
+    setHistory((prev) => 
+      prev.map((entry) => 
+        entry.id === id ? { ...entry, ...updates } : entry
+      )
+    );
+  }, [setHistory]);
+
   return {
     history,
     addCallToHistory,
+    updateCallHistory,
     clearHistory,
     removeEntry,
   };

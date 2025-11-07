@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generate Ringtone for Nostr Call</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #007AFF;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 10px 10px 0;
+        }
+        button:hover {
+            background: #0056CC;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #2196F3;
+        }
+        .success {
+            background: #e8f5e8;
+            color: #2e7d32;
+            border-left-color: #4caf50;
+        }
+        audio {
+            width: 100%;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔔 Generate Ringtone for Nostr Call</h1>
+        
+        <div class="info">
+            <strong>Instructions:</strong><br>
+            1. Click "Generate Ringtone" to create a phone ring sound<br>
+            2. Listen to the preview<br>
+            3. Click "Download" to save as phone-call.mp3<br>
+            4. Place the file in your /public/ directory
+        </div>
+
+        <button id="generateBtn" onclick="generateRingtone()">🎵 Generate Ringtone</button>
+        <button id="downloadBtn" onclick="downloadAudio()" disabled>💾 Download phone-call.mp3</button>
+        
+        <div id="audioContainer" style="display: none;">
+            <h3>Preview:</h3>
+            <audio id="audioPreview" controls></audio>
+        </div>
+
+        <div id="status"></div>
+    </div>
+
+    <script>
+        let audioBlob = null;
+
+        function generateRingtone() {
+            const generateBtn = document.getElementById('generateBtn');
+            const downloadBtn = document.getElementById('downloadBtn');
+            const status = document.getElementById('status');
+            
+            generateBtn.disabled = true;
+            generateBtn.textContent = 'Generating...';
+            status.innerHTML = '<div class="info">Generating ringtone...</div>';
+
+            // Create audio context
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const sampleRate = audioContext.sampleRate;
+            const duration = 3; // 3 seconds
+            const numSamples = sampleRate * duration;
+            
+            // Create buffer
+            const buffer = audioContext.createBuffer(1, numSamples, sampleRate);
+            const data = buffer.getChannelData(0);
+            
+            // Generate professional phone ring pattern
+            for (let i = 0; i < numSamples; i++) {
+                const time = i / sampleRate;
+                
+                // Ring pattern: 1.5 seconds ring, 1 second pause (total 2.5 seconds)
+                const totalCycleTime = 2.5;
+                const ringTime = 1.5;
+                const pauseTime = 1.0;
+                
+                const cyclePosition = time % totalCycleTime;
+                let amplitude = 0;
+                
+                if (cyclePosition < ringTime) {
+                    // Professional dual-tone ring (440Hz and 480Hz)
+                    const tone1 = Math.sin(2 * Math.PI * 440 * time);
+                    const tone2 = Math.sin(2 * Math.PI * 480 * time);
+                    
+                    // Create ring-ring pattern within the ring period
+                    const ringPattern = Math.floor(cyclePosition * 4) % 2; // 4 rings per 1.5 seconds
+                    const ringWithinPattern = (cyclePosition * 4) % 1;
+                    
+                    if (ringPattern === 0 && ringWithinPattern < 0.3) {
+                        // Add professional tremolo effect
+                        const tremolo = 1 + 0.5 * Math.sin(2 * Math.PI * 25 * time);
+                        amplitude = (tone1 + tone2) * 0.25 * tremolo;
+                        
+                        // Smooth fade in/out for each ring
+                        const fadeTime = 0.05;
+                        if (ringWithinPattern < fadeTime) {
+                            amplitude *= ringWithinPattern / fadeTime;
+                        } else if (ringWithinPattern > 0.3 - fadeTime) {
+                            amplitude *= (0.3 - ringWithinPattern) / fadeTime;
+                        }
+                    }
+                }
+                
+                data[i] = amplitude;
+            }
+
+            // Convert to WAV
+            const wavBlob = audioBufferToWav(buffer);
+            audioBlob = wavBlob;
+            
+            // Create preview
+            const audioPreview = document.getElementById('audioPreview');
+            const audioContainer = document.getElementById('audioContainer');
+            audioPreview.src = URL.createObjectURL(wavBlob);
+            audioContainer.style.display = 'block';
+            
+            // Enable download
+            downloadBtn.disabled = false;
+            generateBtn.disabled = false;
+            generateBtn.textContent = '🎵 Generate Ringtone';
+            
+            status.innerHTML = '<div class="info success">✅ Ringtone generated successfully! You can preview it above.</div>';
+        }
+
+        function downloadAudio() {
+            if (!audioBlob) return;
+            
+            const url = URL.createObjectURL(audioBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'phone-call.mp3'; // Browser will convert WAV to desired format
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            const status = document.getElementById('status');
+            status.innerHTML = '<div class="info success">✅ Downloaded! Place the file in your /public/ directory.</div>';
+        }
+
+        // Convert AudioBuffer to WAV blob
+        function audioBufferToWav(buffer) {
+            const numChannels = buffer.numberOfChannels;
+            const sampleRate = buffer.sampleRate;
+            const format = 1; // PCM
+            const bitDepth = 16;
+            
+            const result = interleave(buffer);
+            const buffer32 = encodeWAV(result, format, sampleRate, numChannels, bitDepth);
+            
+            return new Blob([buffer32], { type: 'audio/wav' });
+        }
+
+        function interleave(buffer) {
+            if (buffer.numberOfChannels === 1) {
+                return buffer.getChannelData(0);
+            }
+            const length = buffer.length * buffer.numberOfChannels;
+            const result = new Float32Array(length);
+            let index = 0;
+            const inputL = buffer.getChannelData(0);
+            const inputR = buffer.getChannelData(1);
+            for (let i = 0; i < buffer.length; i++) {
+                result[index++] = inputL[i];
+                result[index++] = inputR[i];
+            }
+            return result;
+        }
+
+        function encodeWAV(samples, format, sampleRate, numChannels, bitDepth) {
+            const bytesPerSample = bitDepth / 8;
+            const blockAlign = numChannels * bytesPerSample;
+            const buffer = new ArrayBuffer(44 + samples.length * bytesPerSample);
+            const view = new DataView(buffer);
+            
+            const writeString = (offset, string) => {
+                for (let i = 0; i < string.length; i++) {
+                    view.setUint8(offset + i, string.charCodeAt(i));
+                }
+            };
+            
+            let offset = 0;
+            writeString(offset, 'RIFF'); offset += 4;
+            view.setUint32(offset, 36 + samples.length * bytesPerSample, true); offset += 4;
+            writeString(offset, 'WAVE'); offset += 4;
+            writeString(offset, 'fmt '); offset += 4;
+            view.setUint32(offset, 16, true); offset += 4;
+            view.setUint16(offset, format, true); offset += 2;
+            view.setUint16(offset, numChannels, true); offset += 2;
+            view.setUint32(offset, sampleRate, true); offset += 4;
+            view.setUint32(offset, sampleRate * blockAlign, true); offset += 4;
+            view.setUint16(offset, blockAlign, true); offset += 2;
+            view.setUint16(offset, bitDepth, true); offset += 2;
+            writeString(offset, 'data'); offset += 4;
+            view.setUint32(offset, samples.length * bytesPerSample, true); offset += 4;
+            
+            const volume = 0.8;
+            for (let i = 0; i < samples.length; i++) {
+                const sample = Math.max(-1, Math.min(1, samples[i]));
+                view.setInt16(offset, sample * volume * 0x7FFF, true);
+                offset += 2;
+            }
+            
+            return buffer;
+        }
+    </script>
+</body>
+</html>

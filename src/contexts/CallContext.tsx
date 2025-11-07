@@ -6,6 +6,7 @@
 import React, { createContext, useCallback, useEffect, useRef, useState } from 'react';
 import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useCallHistory } from '@/hooks/useCallHistory';
 import { NostrService } from '@/services/nostrService';
 import { WebRTCManager } from '@/services/webrtc';
 import { SignalingCoordinator } from '@/services/signaling';
@@ -84,6 +85,7 @@ const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
 export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
+  const { addCallToHistory } = useCallHistory();
 
   // State
   const [callState, setCallState] = useState<CallState>('idle');
@@ -102,6 +104,22 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
   const webrtcManagerRef = useRef<WebRTCManager | null>(null);
   const signalingRef = useRef<SignalingCoordinator | null>(null);
   const unsubscribeIncomingRef = useRef<(() => void) | null>(null);
+  const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const ringbackAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Initialize ringback audio
+  useEffect(() => {
+    ringbackAudioRef.current = new Audio('/nostr-call/phone-call.mp3');
+    ringbackAudioRef.current.loop = true;
+    ringbackAudioRef.current.volume = 0.7;
+    
+    return () => {
+      if (ringbackAudioRef.current) {
+        ringbackAudioRef.current.pause();
+        ringbackAudioRef.current = null;
+      }
+    };
+  }, []);
 
   // Initialize services when user is available
   useEffect(() => {
@@ -202,9 +220,49 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
     }
 
     let connectionTimeout: ReturnType<typeof setTimeout> | null = null;
+    const callStartTime = Date.now();
+    let historyEntryId: string | null = null;
+    
+    // Add call to history and track the ID for updates
+    addCallToHistory({
+      remotePubkey,
+      callType,
+      direction: 'outgoing',
+      status: 'calling',
+      startTime: callStartTime,
+    });
+    
+    // Get the ID of the entry we just added (it will be the first one)
+    const updateHistoryStatus = (status: string, endTime?: number) => {
+      try {
+        const currentHistory = JSON.parse(localStorage.getItem('nostr-call-history') || '[]');
+        if (currentHistory.length > 0) {
+          // Update the most recent entry (first in array)
+          currentHistory[0] = {
+            ...currentHistory[0],
+            status,
+            endTime: endTime || Date.now(),
+            duration: endTime ? Math.round((endTime - callStartTime) / 1000) : Math.round((Date.now() - callStartTime) / 1000),
+          };
+          localStorage.setItem('nostr-call-history', JSON.stringify(currentHistory));
+        }
+      } catch (error) {
+        console.warn('Failed to update call history:', error);
+      }
+    };
 
     try {
       setCallState('calling');
+
+      // Start ringtone playback
+      if (ringbackAudioRef.current) {
+        ringbackAudioRef.current.loop = true;
+        try {
+          await ringbackAudioRef.current.play();
+        } catch (error) {
+          console.warn('Could not play ringtone:', error);
+        }
+      }
 
       // Initialize local media with timeout
       const constraints: MediaStreamConstraints = {
@@ -221,23 +279,44 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
       connectionTimeout = setTimeout(() => {
         console.error('Connection timeout - call failed to establish');
         setCallState('failed');
+        
+        // Stop ringtone
+        if (ringbackAudioRef.current) {
+          ringbackAudioRef.current.pause();
+          ringbackAudioRef.current.currentTime = 0;
+        }
+        
+        // Update call history with timeout status
+        updateHistoryStatus('failed');
+        
         cleanup();
       }, 60000);
 
       // Initiate signaling
       console.log('Starting WebRTC signaling...');
-      const callId = await signalingRef.current.initiateCall(
+      const signalingCallId = await signalingRef.current.initiateCall(
         remotePubkey,
         callType,
         () => {
-          // On connect - clear timeout
+          // On connect - clear timeout and stop ringtone
           if (connectionTimeout) {
             clearTimeout(connectionTimeout);
           }
+          
+          // Stop ringtone
+          if (ringbackAudioRef.current) {
+            ringbackAudioRef.current.pause();
+            ringbackAudioRef.current.currentTime = 0;
+          }
+          
           console.log('Call connected successfully!');
           setCallState('connected');
+          
+          // Update call history with connected status
+          updateHistoryStatus('connected');
+          
           setCurrentSession({
-            callId,
+            callId: signalingCallId,
             remotePubkey,
             callType,
             isInitiator: true,
@@ -255,7 +334,18 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
           if (connectionTimeout) {
             clearTimeout(connectionTimeout);
           }
+          
+          // Stop ringtone if still playing
+          if (ringbackAudioRef.current) {
+            ringbackAudioRef.current.pause();
+            ringbackAudioRef.current.currentTime = 0;
+          }
+          
           console.log('Call closed');
+          
+          // Update call history with end time and duration
+          updateHistoryStatus('completed');
+          
           cleanup();
         },
         (error: Error) => {
@@ -263,15 +353,26 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
           if (connectionTimeout) {
             clearTimeout(connectionTimeout);
           }
+          
+          // Stop ringtone
+          if (ringbackAudioRef.current) {
+            ringbackAudioRef.current.pause();
+            ringbackAudioRef.current.currentTime = 0;
+          }
+          
           console.error('Call error:', error);
           setCallState('failed');
+          
+          // Update call history with error status
+          updateHistoryStatus('failed');
+          
           cleanup();
         }
       );
 
-      console.log('Call initiated with ID:', callId);
+      console.log('Call initiated with ID:', signalingCallId);
       setCurrentSession({
-        callId,
+        callId: signalingCallId,
         remotePubkey,
         callType,
         isInitiator: true,
@@ -281,12 +382,23 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
       if (connectionTimeout) {
         clearTimeout(connectionTimeout);
       }
+      
+      // Stop ringtone on error
+      if (ringbackAudioRef.current) {
+        ringbackAudioRef.current.pause();
+        ringbackAudioRef.current.currentTime = 0;
+      }
+      
       console.error('Failed to start call:', error);
       setCallState('failed');
+      
+      // Update call history with error status
+      updateHistoryStatus('failed');
+      
       cleanup();
       throw error;
     }
-  }, [user, cleanup]);
+  }, [user, cleanup, addCallToHistory]);
 
   /**
    * Answer an incoming call
@@ -295,6 +407,35 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
     if (!webrtcManagerRef.current || !signalingRef.current || !incomingCall || !user) {
       throw new Error('Cannot answer call: invalid state');
     }
+
+    const callStartTime = Date.now();
+
+    // Add call to history immediately when answering
+    addCallToHistory({
+      remotePubkey: incomingCall.remotePubkey,
+      callType: incomingCall.callType,
+      direction: 'incoming',
+      status: 'connected',
+      startTime: callStartTime,
+    });
+    
+    // Create update function for this call
+    const updateIncomingHistoryStatus = (status: string, endTime?: number) => {
+      try {
+        const currentHistory = JSON.parse(localStorage.getItem('nostr-call-history') || '[]');
+        if (currentHistory.length > 0) {
+          currentHistory[0] = {
+            ...currentHistory[0],
+            status,
+            endTime: endTime || Date.now(),
+            duration: endTime ? Math.round((endTime - callStartTime) / 1000) : Math.round((Date.now() - callStartTime) / 1000),
+          };
+          localStorage.setItem('nostr-call-history', JSON.stringify(currentHistory));
+        }
+      } catch (error) {
+        console.warn('Failed to update call history:', error);
+      }
+    };
 
     try {
       const { remotePubkey, offer, callType } = incomingCall;
@@ -344,12 +485,20 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
         () => {
           // On close
           console.log('Call closed by remote');
+          
+          // Update call history with completion
+          updateIncomingHistoryStatus('completed');
+          
           cleanup();
         },
         (error: Error) => {
           // On error
           console.error('Call error:', error);
           setCallState('failed');
+          
+          // Update call history with error
+          updateIncomingHistoryStatus('failed');
+          
           cleanup();
         }
       );
@@ -357,10 +506,14 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
       console.error('Failed to answer call:', error);
       setCallState('failed');
       setIncomingCall(null);
+      
+      // Update call history with error
+      updateIncomingHistoryStatus('failed');
+      
       cleanup();
       throw error;
     }
-  }, [incomingCall, user, cleanup]);
+  }, [incomingCall, user, cleanup, addCallToHistory]);
 
   /**
    * Reject an incoming call
@@ -371,14 +524,26 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
     }
 
     try {
-      const { remotePubkey, offer } = incomingCall;
+      const { remotePubkey, offer, callType } = incomingCall;
+      
+      // Add rejected call to history
+      addCallToHistory({
+        remotePubkey,
+        callType,
+        direction: 'incoming',
+        status: 'rejected',
+        startTime: Date.now(),
+        endTime: Date.now(),
+        duration: 0,
+      });
+      
       await signalingRef.current.rejectCall(remotePubkey, offer.callId);
       setIncomingCall(null);
       setCallState('idle');
     } catch (error) {
       console.error('Failed to reject call:', error);
     }
-  }, [incomingCall]);
+  }, [incomingCall, addCallToHistory]);
 
   /**
    * Hang up the current call
