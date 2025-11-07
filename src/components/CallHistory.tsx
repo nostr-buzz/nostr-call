@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { Phone, PhoneIncoming, PhoneOutgoing, Video, Clock } from 'lucide-react';
 import { useCallHistory, type CallHistoryEntry } from '@/hooks/useCallHistory';
 import { useAuthor } from '@/hooks/useAuthor';
+import { useCall } from '@/hooks/useCall';
 import { genUserName } from '@/lib/genUserName';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -123,6 +124,7 @@ interface CallHistoryProps {
 
 export function CallHistory(props?: CallHistoryProps) {
   const hookData = useCallHistory();
+  const { startCall } = useCall();
   const history = props?.history ?? hookData.history;
   const clearHistory = props?.onClearHistory ?? hookData.clearHistory;
   const [selectedEntry, setSelectedEntry] = useState<CallHistoryEntry | null>(null);
@@ -184,6 +186,7 @@ export function CallHistory(props?: CallHistoryProps) {
           entry={selectedEntry}
           open={isDialogOpen}
           onOpenChange={handleDialogChange}
+          onStartCall={startCall}
         />
       )}
     </div>

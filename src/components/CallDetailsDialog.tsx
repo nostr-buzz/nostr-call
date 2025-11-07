@@ -11,7 +11,6 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { useAuthor } from '@/hooks/useAuthor';
-import { useCall } from '@/hooks/useCall';
 import { genUserName } from '@/lib/genUserName';
 import type { CallHistoryEntry } from '@/hooks/useCallHistory';
 
@@ -19,6 +18,7 @@ interface CallDetailsDialogProps {
   entry: CallHistoryEntry;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onStartCall?: (pubkey: string, callType: 'audio' | 'video') => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -32,10 +32,9 @@ function formatDateTime(timestamp: number): string {
   return date.toLocaleString();
 }
 
-export function CallDetailsDialog({ entry, open, onOpenChange }: CallDetailsDialogProps) {
+export function CallDetailsDialog({ entry, open, onOpenChange, onStartCall }: CallDetailsDialogProps) {
   const [isCallLoading, setIsCallLoading] = useState(false);
   const author = useAuthor(entry.remotePubkey);
-  const { startCall } = useCall();
   const metadata = author.data?.metadata;
   const displayName = metadata?.name || genUserName(entry.remotePubkey);
   const avatar = metadata?.picture;
@@ -54,16 +53,18 @@ export function CallDetailsDialog({ entry, open, onOpenChange }: CallDetailsDial
     switch (entry.status) {
       case 'completed': return 'Completed';
       case 'missed': return 'Missed';
-      case 'rejected': return 'Declined';
+      case 'rejected': return 'Rejected';
       case 'failed': return 'Failed';
       default: return 'Unknown';
     }
   };
 
   const handleCallBack = async (callType: 'audio' | 'video') => {
+    if (!onStartCall) return;
+    
     setIsCallLoading(true);
     try {
-      await startCall(entry.remotePubkey, callType);
+      await onStartCall(entry.remotePubkey, callType);
       onOpenChange(false);
     } catch (error) {
       console.error('Failed to start call:', error);
