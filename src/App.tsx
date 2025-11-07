@@ -12,6 +12,8 @@ import { NostrLoginProvider } from '@nostrify/react/login';
 import { AppProvider } from '@/components/AppProvider';
 import { NWCProvider } from '@/contexts/NWCContext';
 import { CallProvider } from '@/contexts/CallContext';
+import { CallingScreen } from '@/components/CallingScreen';
+import { useCall } from '@/hooks/useCall';
 import { AppConfig } from '@/contexts/AppContext';
 import AppRouter from './AppRouter';
 
@@ -43,6 +45,26 @@ const presetRelays = [
   { url: 'wss://relay.primal.net', name: 'Primal' },
 ];
 
+function AppContent() {
+  const { callState, currentSession } = useCall();
+
+  return (
+    <>
+      <Suspense>
+        <AppRouter />
+      </Suspense>
+      
+      {/* Calling Screen Overlay */}
+      {callState === 'calling' && currentSession && (
+        <CallingScreen 
+          remotePubkey={currentSession.remotePubkey} 
+          callType={currentSession.callType} 
+        />
+      )}
+    </>
+  );
+}
+
 export function App() {
   return (
     <UnheadProvider head={head}>
@@ -54,9 +76,7 @@ export function App() {
                 <CallProvider>
                   <TooltipProvider>
                     <Toaster />
-                    <Suspense>
-                      <AppRouter />
-                    </Suspense>
+                    <AppContent />
                   </TooltipProvider>
                 </CallProvider>
               </NWCProvider>
