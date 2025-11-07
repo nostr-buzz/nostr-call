@@ -23,25 +23,38 @@ export default defineConfig(() => ({
     minify: 'terser', // Use terser for better minification and error handling
     rollupOptions: {
       output: {
-        // Simplified and safer chunking strategy
-        manualChunks: {
-          // Core React libraries
-          'react-vendor': ['react', 'react-dom'],
-          
-          // Routing
-          'router': ['react-router-dom'],
-          
-          // Nostr ecosystem
-          'nostr': ['@nostrify/nostrify', '@nostrify/react', 'nostr-tools'],
-          
-          // UI components
-          'ui-vendor': ['lucide-react', '@radix-ui/react-dialog', '@radix-ui/react-button', '@radix-ui/react-avatar'],
-          
-          // State management
-          'state': ['@tanstack/react-query'],
-          
-          // Utilities
-          'utils': ['clsx', 'tailwind-merge'],
+        // Simplified and safer chunking strategy - only using installed packages
+        manualChunks: (id) => {
+          // Only chunk node_modules to avoid entry resolution issues
+          if (id.includes('node_modules')) {
+            // Core React libraries
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'react-vendor';
+            }
+            
+            // Routing
+            if (id.includes('react-router')) {
+              return 'router';
+            }
+            
+            // Nostr ecosystem
+            if (id.includes('@nostrify') || id.includes('nostr-tools')) {
+              return 'nostr';
+            }
+            
+            // State management
+            if (id.includes('@tanstack/react-query')) {
+              return 'state';
+            }
+            
+            // UI and utils
+            if (id.includes('lucide-react') || id.includes('clsx') || id.includes('tailwind-merge')) {
+              return 'ui-utils';
+            }
+            
+            // Everything else in vendor
+            return 'vendor';
+          }
         },
         // Safe chunk and asset naming
         chunkFileNames: 'assets/[name]-[hash].js',
