@@ -20,7 +20,7 @@ export default defineConfig(() => ({
   build: {
     chunkSizeWarningLimit: 1000, // Increase limit to 1MB
     target: 'esnext', // Modern browser support for better optimization
-    minify: 'terser', // Use terser for better minification and error handling
+    minify: 'esbuild', // Use esbuild for faster builds and better compatibility
     rollupOptions: {
       output: {
         // Simplified and safer chunking strategy - only using installed packages
