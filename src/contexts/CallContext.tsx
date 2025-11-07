@@ -51,6 +51,8 @@ interface CallProviderProps {
   children: React.ReactNode;
 }
 
+const RINGBACK_REPEAT_DELAY_MS = 900;
+
 // Professional STUN/TURN servers for reliable connections
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   // Google STUN servers (multiple for redundancy)
@@ -106,20 +108,49 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
   const unsubscribeIncomingRef = useRef<(() => void) | null>(null);
   const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const ringbackAudioRef = useRef<HTMLAudioElement | null>(null);
+  const ringbackGapTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const clearRingbackLoop = () => {
+    if (ringbackGapTimeoutRef.current) {
+      clearTimeout(ringbackGapTimeoutRef.current);
+      ringbackGapTimeoutRef.current = null;
+    }
+  };
+
+  const stopRingbackTone = () => {
+    clearRingbackLoop();
+    if (ringbackAudioRef.current) {
+      ringbackAudioRef.current.pause();
+      ringbackAudioRef.current.currentTime = 0;
+    }
+  };
 
   // Initialize ringback audio
   useEffect(() => {
-    ringbackAudioRef.current = new Audio('/nostr-call/phone-call.mp3');
-    ringbackAudioRef.current.loop = true;
-    ringbackAudioRef.current.volume = 0.7;
+    const audio = new Audio('/nostr-call/phone-call.mp3');
+    audio.loop = false;
+    audio.volume = 0.7;
+
+    const handleEnded = () => {
+      clearRingbackLoop();
+      ringbackGapTimeoutRef.current = setTimeout(() => {
+        audio.currentTime = 0;
+        audio.play().catch((error) => {
+          console.warn('Could not replay ringtone:', error);
+        });
+      }, RINGBACK_REPEAT_DELAY_MS);
+    };
+
+    audio.addEventListener('ended', handleEnded);
+    ringbackAudioRef.current = audio;
     
     return () => {
-      if (ringbackAudioRef.current) {
-        ringbackAudioRef.current.pause();
-        ringbackAudioRef.current = null;
-      }
+      audio.removeEventListener('ended', handleEnded);
+      audio.pause();
+      ringbackAudioRef.current = null;
+      clearRingbackLoop();
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initialize services when user is available
   useEffect(() => {
@@ -256,8 +287,9 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
 
       // Start ringtone playback
       if (ringbackAudioRef.current) {
-        ringbackAudioRef.current.loop = true;
         try {
+          clearRingbackLoop();
+          ringbackAudioRef.current.currentTime = 0;
           await ringbackAudioRef.current.play();
         } catch (error) {
           console.warn('Could not play ringtone:', error);
@@ -281,10 +313,7 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
         setCallState('failed');
         
         // Stop ringtone
-        if (ringbackAudioRef.current) {
-          ringbackAudioRef.current.pause();
-          ringbackAudioRef.current.currentTime = 0;
-        }
+        stopRingbackTone();
         
         // Update call history with timeout status
         updateHistoryStatus('failed');
@@ -304,10 +333,7 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
           }
           
           // Stop ringtone
-          if (ringbackAudioRef.current) {
-            ringbackAudioRef.current.pause();
-            ringbackAudioRef.current.currentTime = 0;
-          }
+          stopRingbackTone();
           
           console.log('Call connected successfully!');
           setCallState('connected');
@@ -336,10 +362,7 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
           }
           
           // Stop ringtone if still playing
-          if (ringbackAudioRef.current) {
-            ringbackAudioRef.current.pause();
-            ringbackAudioRef.current.currentTime = 0;
-          }
+          stopRingbackTone();
           
           console.log('Call closed');
           
@@ -355,10 +378,7 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
           }
           
           // Stop ringtone
-          if (ringbackAudioRef.current) {
-            ringbackAudioRef.current.pause();
-            ringbackAudioRef.current.currentTime = 0;
-          }
+          stopRingbackTone();
           
           console.error('Call error:', error);
           setCallState('failed');
@@ -384,10 +404,7 @@ export const CallProvider: React.FC<CallProviderProps> = ({ children }) => {
       }
       
       // Stop ringtone on error
-      if (ringbackAudioRef.current) {
-        ringbackAudioRef.current.pause();
-        ringbackAudioRef.current.currentTime = 0;
-      }
+      stopRingbackTone();
       
       console.error('Failed to start call:', error);
       setCallState('failed');

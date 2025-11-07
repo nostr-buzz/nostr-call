@@ -104,6 +104,8 @@ export const EditProfileForm: React.FC = () => {
       await publishEvent({
         kind: 0,
         content: JSON.stringify(data),
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [],
       });
 
       // Invalidate queries to refresh the data
@@ -313,6 +315,8 @@ const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
             ref={fileInputRef}
             accept="image/*"
             className="hidden"
+            aria-label={`Upload ${label.toLowerCase()}`}
+            title={`Upload ${label.toLowerCase()}`}
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) {

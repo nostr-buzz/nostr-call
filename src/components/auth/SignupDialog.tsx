@@ -187,6 +187,8 @@ const SignupDialog: React.FC<SignupDialogProps> = ({ isOpen, onClose, onComplete
         await publishEvent({
           kind: 0,
           content: JSON.stringify(metadata),
+          created_at: Math.floor(Date.now() / 1000),
+          tags: [],
         });
 
         toast({

@@ -103,6 +103,17 @@ export default function CallScreen() {
     }
   }, [callState, currentSession]);
 
+  // Ensure we hang up if user navigates away while a call is active
+  useEffect(() => {
+    return () => {
+      if (callState !== 'idle') {
+        hangup().catch((err) => {
+          console.warn('Failed to terminate call on unmount:', err);
+        });
+      }
+    };
+  }, [callState, hangup]);
+
   // Handle hangup and navigate back
   const handleHangup = async () => {
     await hangup();
@@ -253,7 +264,7 @@ export default function CallScreen() {
       </div>
 
       {/* Control Bar */}
-      <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-10">
+      <div className="absolute left-1/2 transform -translate-x-1/2 z-10 bottom-24 sm:bottom-16">
         <Card className="bg-black/50 backdrop-blur-md border-white/20">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">

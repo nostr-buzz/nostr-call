@@ -132,7 +132,7 @@ export function CallingScreen({ remotePubkey, callType, callState }: CallingScre
       </div>
 
       {/* End Call Button */}
-      <div className="pb-12 safe-area-bottom">
+      <div className="pb-24 safe-area-bottom">
         <Button
           onClick={hangup}
           className="h-20 w-20 rounded-full bg-red-500 hover:bg-red-600 shadow-2xl"

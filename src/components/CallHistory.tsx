@@ -3,6 +3,7 @@
  * Displays list of recent calls with details
  */
 
+import { useState } from 'react';
 import { Phone, PhoneIncoming, PhoneOutgoing, Video, Clock } from 'lucide-react';
 import { useCallHistory, type CallHistoryEntry } from '@/hooks/useCallHistory';
 import { useAuthor } from '@/hooks/useAuthor';
@@ -10,6 +11,7 @@ import { genUserName } from '@/lib/genUserName';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { CallDetailsDialog } from '@/components/CallDetailsDialog';
 
 function formatDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -32,7 +34,7 @@ function formatTime(timestamp: number): string {
   return date.toLocaleDateString();
 }
 
-function CallHistoryItem({ entry }: { entry: CallHistoryEntry }) {
+function CallHistoryItem({ entry, onItemClick }: { entry: CallHistoryEntry; onItemClick?: (entry: CallHistoryEntry) => void }) {
   const author = useAuthor(entry.remotePubkey);
   const metadata = author.data?.metadata;
   const displayName = metadata?.name || genUserName(entry.remotePubkey);
@@ -59,7 +61,18 @@ function CallHistoryItem({ entry }: { entry: CallHistoryEntry }) {
   };
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors group active:bg-gray-100 dark:active:bg-gray-700">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onItemClick?.(entry)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onItemClick?.(entry);
+        }
+      }}
+      className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors group active:bg-gray-100 dark:active:bg-gray-700 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+    >
       {/* Avatar */}
       <Avatar className="h-12 w-12">
         <AvatarImage src={avatar} alt={displayName} />
@@ -112,6 +125,20 @@ export function CallHistory(props?: CallHistoryProps) {
   const hookData = useCallHistory();
   const history = props?.history ?? hookData.history;
   const clearHistory = props?.onClearHistory ?? hookData.clearHistory;
+  const [selectedEntry, setSelectedEntry] = useState<CallHistoryEntry | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  const handleItemClick = (entry: CallHistoryEntry) => {
+    setSelectedEntry(entry);
+    setIsDialogOpen(true);
+  };
+
+  const handleDialogChange = (open: boolean) => {
+    setIsDialogOpen(open);
+    if (!open) {
+      setSelectedEntry(null);
+    }
+  };
 
   if (history.length === 0) {
     return (
@@ -149,9 +176,16 @@ export function CallHistory(props?: CallHistoryProps) {
       </div>
       <div className="divide-y divide-gray-100 dark:divide-gray-800 max-h-[60vh] overflow-y-auto">
         {history.map((entry) => (
-          <CallHistoryItem key={entry.id} entry={entry} />
+          <CallHistoryItem key={entry.id} entry={entry} onItemClick={handleItemClick} />
         ))}
       </div>
+      {selectedEntry && (
+        <CallDetailsDialog
+          entry={selectedEntry}
+          open={isDialogOpen}
+          onOpenChange={handleDialogChange}
+        />
+      )}
     </div>
   );
 }
