@@ -13,22 +13,21 @@ export default defineConfig(() => ({
   define: {
     global: 'globalThis',
     'process.env': {},
+    // Ensure React is properly defined
+    __DEV__: JSON.stringify(false),
   },
   plugins: [
     react(),
   ],
   build: {
     chunkSizeWarningLimit: 1000, // Increase limit to 1MB
-    target: 'esnext', // Modern browser support for better optimization
-    minify: 'esbuild', // Use esbuild for faster builds and better compatibility
+    target: 'es2020', // Better compatibility
+    minify: true, // Use default minification
+    sourcemap: false, // Disable sourcemaps for production
     rollupOptions: {
       output: {
-        // Minimal chunking to avoid React conflicts
-        manualChunks: undefined, // Disable manual chunking entirely
-        // Safe chunk and asset naming
-        chunkFileNames: 'assets/[name]-[hash].js',
-        entryFileNames: 'assets/[name]-[hash].js',
-        assetFileNames: 'assets/[name]-[hash].[ext]',
+        // Completely disable manual chunking to avoid conflicts
+        manualChunks: undefined,
       },
     },
   },

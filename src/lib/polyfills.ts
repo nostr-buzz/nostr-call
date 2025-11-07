@@ -26,6 +26,15 @@ if (!globalThis.Buffer) {
 }
 
 /**
+ * React specific polyfills
+ */
+// Ensure React.Children is properly available
+if (typeof globalThis !== 'undefined') {
+  // Prevent React conflicts by ensuring proper globals
+  globalThis.__DEV__ = false;
+}
+
+/**
  * Polyfill for AbortSignal.any()
  * 
  * AbortSignal.any() creates an AbortSignal that will be aborted when any of the
